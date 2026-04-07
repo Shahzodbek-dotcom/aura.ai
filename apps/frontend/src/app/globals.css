@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+  --background: 246 247 255;
+  --foreground: 20 24 39;
+  --card: 255 255 255;
+  --border: 208 216 255;
+  --primary: 34 197 156;
+  --secondary: 110 168 255;
+  --accent: 255 125 95;
+  --muted: 96 108 136;
+}
+
+.dark {
+  color-scheme: dark;
+  --background: 10 14 26;
+  --foreground: 237 241 255;
+  --card: 18 24 40;
+  --border: 46 58 96;
+  --primary: 73 237 195;
+  --secondary: 92 145 255;
+  --accent: 255 143 109;
+  --muted: 161 174 213;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(var(--secondary), 0.22), transparent 30%),
+    radial-gradient(circle at top right, rgba(var(--primary), 0.18), transparent 28%),
+    radial-gradient(circle at bottom center, rgba(var(--accent), 0.16), transparent 32%),
+    rgb(var(--background));
+  color: rgb(var(--foreground));
+}
+
+::selection {
+  background: rgba(var(--secondary), 0.28);
+  color: rgb(var(--foreground));
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
