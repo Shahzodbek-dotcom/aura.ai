@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from apps.backend.app.core.config import get_settings
 from apps.backend.app.core.security import create_access_token
 from apps.backend.app.api.deps import get_current_user
 from apps.backend.app.db.session import get_db
@@ -9,6 +10,20 @@ from apps.backend.app.services.auth import authenticate_user, create_user, get_u
 from database.schema.models import User
 
 router = APIRouter()
+settings = get_settings()
+
+
+def serialize_user(user: User) -> UserRead:
+    return UserRead.model_validate(
+        {
+            "id": user.id,
+            "full_name": user.full_name,
+            "email": user.email,
+            "is_active": user.is_active,
+            "is_admin": user.email.lower() in settings.admin_emails,
+            "created_at": user.created_at,
+        }
+    )
 
 
 @router.post(
@@ -24,7 +39,7 @@ def signup(payload: UserCreate, db: Session = Depends(get_db)) -> Token:
 
     user = create_user(db, payload)
     token = create_access_token(str(user.id))
-    return Token(access_token=token, user=UserRead.model_validate(user))
+    return Token(access_token=token, user=serialize_user(user))
 
 
 @router.post(
@@ -38,9 +53,9 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> Token:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password")
 
     token = create_access_token(str(user.id))
-    return Token(access_token=token, user=UserRead.model_validate(user))
+    return Token(access_token=token, user=serialize_user(user))
 
 
 @router.get("/me", response_model=UserRead, responses={401: {"model": ApiError}})
 def get_me(current_user: User = Depends(get_current_user)) -> UserRead:
-    return UserRead.model_validate(current_user)
+    return serialize_user(current_user)

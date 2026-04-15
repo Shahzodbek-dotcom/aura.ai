@@ -20,15 +20,28 @@ export type Transaction = {
   id: number;
   title: string;
   category: string;
+  transaction_type: "expense" | "income";
   amount: number;
   transaction_date: string;
   notes?: string | null;
   created_at: string;
 };
 
+export type TransactionType = Transaction["transaction_type"];
+
+export type TransactionCreatePayload = {
+  title: string;
+  category: string;
+  transaction_type: TransactionType;
+  amount: number;
+  transaction_date?: string;
+  notes?: string;
+};
+
 export type TransactionUpdatePayload = {
   title: string;
   category: string;
+  transaction_type: TransactionType;
   amount: number;
   transaction_date?: string;
   notes?: string;
@@ -53,7 +66,9 @@ export type GoalUpdatePayload = {
 
 export type TrendPoint = {
   date: string;
-  total: number;
+  income: number;
+  expense: number;
+  balance: number;
 };
 
 export type CategorySpend = {
@@ -70,13 +85,39 @@ export type Insight = {
 };
 
 export type DashboardSummary = {
-  total_spent: number;
-  monthly_spent: number;
+  total_income: number;
+  total_expense: number;
+  net_balance: number;
+  monthly_income: number;
+  monthly_expense: number;
   recent_transactions: Transaction[];
   spending_trend: TrendPoint[];
   category_breakdown: CategorySpend[];
   goals: GoalProgress[];
   latest_insight: Insight;
+};
+
+export type AdminUserRow = {
+  id: number;
+  full_name: string;
+  email: string;
+  is_active: boolean;
+  is_admin?: boolean;
+  created_at: string;
+  transaction_count: number;
+  total_spent: number;
+  total_income: number;
+  goal_count: number;
+  total_goal_target: number;
+};
+
+export type AdminOverview = {
+  total_users: number;
+  total_transactions: number;
+  total_goals: number;
+  total_spent: number;
+  total_income: number;
+  users: AdminUserRow[];
 };
 
 function toNumber(value: number | string) {
@@ -184,6 +225,19 @@ export async function createGoal(payload: {
   });
 }
 
+export async function createTransaction(payload: TransactionCreatePayload) {
+  const response = await request<Transaction>("/transactions", {
+    method: "POST",
+    body: payload,
+    auth: true,
+  });
+
+  return {
+    ...response,
+    amount: toNumber(response.amount),
+  };
+}
+
 export async function contributeToGoal(goalId: number, amount: number) {
   return request(`/goals/${goalId}/contribute`, {
     method: "POST",
@@ -232,15 +286,20 @@ export async function getDashboardSummary() {
 
   return {
     ...response,
-    total_spent: toNumber(response.total_spent),
-    monthly_spent: toNumber(response.monthly_spent),
+    total_income: toNumber(response.total_income),
+    total_expense: toNumber(response.total_expense),
+    net_balance: toNumber(response.net_balance),
+    monthly_income: toNumber(response.monthly_income),
+    monthly_expense: toNumber(response.monthly_expense),
     recent_transactions: response.recent_transactions.map((item) => ({
       ...item,
       amount: toNumber(item.amount),
     })),
     spending_trend: response.spending_trend.map((item) => ({
       ...item,
-      total: toNumber(item.total),
+      income: toNumber(item.income),
+      expense: toNumber(item.expense),
+      balance: toNumber(item.balance),
     })),
     category_breakdown: response.category_breakdown.map((item) => ({
       ...item,
@@ -257,4 +316,38 @@ export async function getDashboardSummary() {
 
 export async function getCurrentUser() {
   return request<StoredUser>("/auth/me", { auth: true });
+}
+
+export async function getAdminOverview() {
+  const response = await request<AdminOverview>("/admin/overview", { auth: true });
+  return {
+    ...response,
+    total_spent: toNumber(response.total_spent),
+    users: response.users.map((user) => ({
+      ...user,
+      total_spent: toNumber(user.total_spent),
+      total_income: toNumber(user.total_income),
+      total_goal_target: toNumber(user.total_goal_target),
+    })),
+  };
+}
+
+export async function downloadAdminExport() {
+  const token = getAccessToken();
+  if (!token) {
+    throw new Error("Sessiya topilmadi. Qayta login qiling.");
+  }
+
+  const response = await fetch(`${API_BASE_URL}/admin/export.xlsx`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error("Excel exportni yuklab bo'lmadi.");
+  }
+
+  return response.blob();
 }

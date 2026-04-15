@@ -19,7 +19,9 @@ class CategorySpend(BaseModel):
 
 class TrendPoint(BaseModel):
     date: str
-    total: Decimal
+    income: Decimal
+    expense: Decimal
+    balance: Decimal
 
 
 class InsightRead(BaseModel):
@@ -40,8 +42,11 @@ class GoalProgress(BaseModel):
 
 
 class DashboardSummary(BaseModel):
-    total_spent: Decimal
-    monthly_spent: Decimal
+    total_income: Decimal
+    total_expense: Decimal
+    net_balance: Decimal
+    monthly_income: Decimal
+    monthly_expense: Decimal
     recent_transactions: list[TransactionRead]
     spending_trend: list[TrendPoint]
     category_breakdown: list[CategorySpend]

@@ -16,7 +16,7 @@ from apps.backend.app.schemas.dashboard import (
 )
 from apps.backend.app.schemas.transaction import TransactionRead
 from apps.backend.app.services.ai import generate_insight_with_ai
-from database.schema.models import AIAdvice, AdviceType, Goal, Transaction, User
+from database.schema.models import AIAdvice, AdviceType, Goal, Transaction, TransactionType, User
 
 
 def _decimal(value: Decimal | int | float | None) -> Decimal:
@@ -37,13 +37,30 @@ def build_dashboard_summary(db: Session, user: User) -> DashboardSummary:
     )
     goals = list(db.scalars(select(Goal).where(Goal.user_id == user.id).order_by(desc(Goal.created_at))))
 
-    total_spent = sum((_decimal(item.amount) for item in transactions), Decimal("0.00"))
+    expense_transactions = [
+        item for item in transactions if item.transaction_type == TransactionType.EXPENSE
+    ]
+    income_transactions = [
+        item for item in transactions if item.transaction_type == TransactionType.INCOME
+    ]
+
+    total_income = sum((_decimal(item.amount) for item in income_transactions), Decimal("0.00"))
+    total_expense = sum((_decimal(item.amount) for item in expense_transactions), Decimal("0.00"))
+    net_balance = total_income - total_expense
     current_month = datetime.utcnow().month
     current_year = datetime.utcnow().year
-    monthly_spent = sum(
+    monthly_income = sum(
         (
             _decimal(item.amount)
-            for item in transactions
+            for item in income_transactions
+            if item.transaction_date.month == current_month and item.transaction_date.year == current_year
+        ),
+        Decimal("0.00"),
+    )
+    monthly_expense = sum(
+        (
+            _decimal(item.amount)
+            for item in expense_transactions
             if item.transaction_date.month == current_month and item.transaction_date.year == current_year
         ),
         Decimal("0.00"),
@@ -52,19 +69,32 @@ def build_dashboard_summary(db: Session, user: User) -> DashboardSummary:
     recent_transactions = [TransactionRead.model_validate(item) for item in transactions[:6]]
 
     trend_source = [item for item in transactions if item.transaction_date >= datetime.utcnow() - timedelta(days=6)]
-    daily_totals: dict[str, Decimal] = defaultdict(lambda: Decimal("0.00"))
+    daily_income: dict[str, Decimal] = defaultdict(lambda: Decimal("0.00"))
+    daily_expense: dict[str, Decimal] = defaultdict(lambda: Decimal("0.00"))
     for item in trend_source:
         key = item.transaction_date.strftime("%Y-%m-%d")
-        daily_totals[key] += _decimal(item.amount)
+        if item.transaction_type == TransactionType.INCOME:
+            daily_income[key] += _decimal(item.amount)
+        else:
+            daily_expense[key] += _decimal(item.amount)
 
     trend = []
     for offset in range(6, -1, -1):
         day = datetime.utcnow() - timedelta(days=offset)
         key = day.strftime("%Y-%m-%d")
-        trend.append(TrendPoint(date=day.strftime("%b %d"), total=daily_totals[key]))
+        income_total = daily_income[key]
+        expense_total = daily_expense[key]
+        trend.append(
+            TrendPoint(
+                date=day.strftime("%b %d"),
+                income=income_total,
+                expense=expense_total,
+                balance=income_total - expense_total,
+            )
+        )
 
     category_map: dict[str, Decimal] = defaultdict(lambda: Decimal("0.00"))
-    for item in transactions:
+    for item in expense_transactions:
         category_map[item.category] += _decimal(item.amount)
     category_breakdown = [
         CategorySpend(category=category, total=total)
@@ -89,7 +119,8 @@ def build_dashboard_summary(db: Session, user: User) -> DashboardSummary:
         )
 
     summary_text = (
-        f"User {user.full_name}. Total spent {total_spent}. Monthly spent {monthly_spent}. "
+        f"User {user.full_name}. Total income {total_income}. Total spent {total_expense}. "
+        f"Net balance {net_balance}. Monthly income {monthly_income}. Monthly spent {monthly_expense}. "
         f"Top categories: {', '.join(item.category for item in category_breakdown) or 'none'}. "
         f"Goals: {', '.join(goal.title for goal in goals) or 'none'}."
     )
@@ -105,8 +136,11 @@ def build_dashboard_summary(db: Session, user: User) -> DashboardSummary:
     db.refresh(advice)
 
     return DashboardSummary(
-        total_spent=total_spent,
-        monthly_spent=monthly_spent,
+        total_income=total_income,
+        total_expense=total_expense,
+        net_balance=net_balance,
+        monthly_income=monthly_income,
+        monthly_expense=monthly_expense,
         recent_transactions=recent_transactions,
         spending_trend=trend,
         category_breakdown=category_breakdown,

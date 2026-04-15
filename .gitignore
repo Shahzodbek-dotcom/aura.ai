@@ -9,7 +9,9 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 .venv/
+.venv313/
 venv/
+.tmp/
 
 # Environment
 .env
@@ -29,3 +31,4 @@ Thumbs.db
 dist/
 build/
 coverage/
+*.tsbuildinfo

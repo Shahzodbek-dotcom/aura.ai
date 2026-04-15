@@ -1,14 +1,16 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowUpRight, Sparkles, Target, Wallet, Zap } from "lucide-react";
+import { ArrowDownRight, ArrowUpRight, Landmark, Sparkles, Wallet, Zap } from "lucide-react";
 import { toast } from "sonner";
 
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { useLanguage } from "@/components/providers/language-provider";
 import {
   contributeToGoal,
+  createTransaction,
   createGoal,
   DashboardSummary,
   deleteGoal,
@@ -18,10 +20,12 @@ import {
   GoalProgress,
   parseExpense,
   Transaction,
+  TransactionType,
   updateGoal,
   updateTransaction,
 } from "@/lib/api";
 import { CategoryBreakdownChart } from "@/components/dashboard/category-breakdown-chart";
+import { CashflowEntryForm } from "@/components/dashboard/cashflow-entry-form";
 import { ExpenseParserForm } from "@/components/dashboard/expense-parser-form";
 import { GoalForm } from "@/components/dashboard/goal-form";
 import { SpendingTrendChart } from "@/components/dashboard/spending-trend-chart";
@@ -46,6 +50,22 @@ function formatCurrency(value: number, language: string) {
   }).format(value);
 }
 
+function getTransactionAccent(transactionType: TransactionType) {
+  return transactionType === "income"
+    ? {
+        badge: "bg-emerald-100 text-emerald-700",
+        amount: "text-emerald-600",
+        surface: "border-emerald-200/70 bg-emerald-50/55",
+        sign: "+",
+      }
+    : {
+        badge: "bg-rose-100 text-rose-700",
+        amount: "text-rose-600",
+        surface: "border-rose-200/70 bg-rose-50/45",
+        sign: "-",
+      };
+}
+
 function EmptyChartState({ title }: { title: string }) {
   return (
     <div className="flex h-[280px] items-center justify-center rounded-[24px] border border-dashed border-border bg-white/50 text-sm text-muted">
@@ -65,6 +85,7 @@ export default function DashboardPage() {
   const [transactionForm, setTransactionForm] = useState({
     title: "",
     category: "",
+    transaction_type: "expense" as TransactionType,
     amount: "",
     transaction_date: "",
     notes: "",
@@ -81,6 +102,7 @@ export default function DashboardPage() {
     setTransactionForm({
       title: transaction.title,
       category: transaction.category,
+      transaction_type: transaction.transaction_type,
       amount: String(transaction.amount),
       transaction_date: transaction.transaction_date.slice(0, 16),
       notes: transaction.notes ?? "",
@@ -142,6 +164,26 @@ export default function DashboardPage() {
         submitError instanceof Error
           ? submitError.message
           : t("expenseSubmit");
+      setError(message);
+      toast.error(message);
+    }
+  }
+
+  async function handleCashflowSubmit(payload: {
+    title: string;
+    category: string;
+    transaction_type: TransactionType;
+    amount: number;
+    transaction_date?: string;
+    notes?: string;
+  }) {
+    setError(null);
+    try {
+      await createTransaction(payload);
+      await loadSummary();
+    } catch (submitError) {
+      const message =
+        submitError instanceof Error ? submitError.message : t("cashflowCreateError");
       setError(message);
       toast.error(message);
     }
@@ -220,11 +262,14 @@ export default function DashboardPage() {
       await updateTransaction(transactionId, {
         title: transactionForm.title,
         category: transactionForm.category,
+        transaction_type: transactionForm.transaction_type,
         amount: Number(transactionForm.amount),
         transaction_date: transactionForm.transaction_date || undefined,
         notes: transactionForm.notes || undefined,
       });
-      toast.success(t("updateSuccess"));
+      toast.success(
+        transactionForm.transaction_type === "income" ? t("incomeUpdateSuccess") : t("updateSuccess")
+      );
       setEditingTransactionId(null);
       await loadSummary();
     } catch (submitError) {
@@ -238,8 +283,11 @@ export default function DashboardPage() {
   async function handleTransactionDelete(transactionId: number) {
     setError(null);
     try {
+      const transaction = summary?.recent_transactions.find((item) => item.id === transactionId);
       await deleteTransaction(transactionId);
-      toast.success(t("deleteSuccess"));
+      toast.success(
+        transaction?.transaction_type === "income" ? t("incomeDeleteSuccess") : t("deleteSuccess")
+      );
       if (editingTransactionId === transactionId) {
         setEditingTransactionId(null);
       }
@@ -274,6 +322,11 @@ export default function DashboardPage() {
             <div className="flex flex-wrap gap-3">
               <LanguageSwitcher />
               <ThemeToggle />
+              {user?.is_admin ? (
+                <Button asChild variant="outline">
+                  <Link href="/admin">Admin Panel</Link>
+                </Button>
+              ) : null}
               <Button
                 variant="outline"
                 onClick={() =>
@@ -330,54 +383,61 @@ export default function DashboardPage() {
           <Card className="bg-card/85">
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="rounded-full bg-secondary/60 p-3">
+                <span className="rounded-full bg-emerald-100 p-3">
                   <Wallet className="h-5 w-5 text-primary" />
+                </span>
+                <span className="text-xs uppercase tracking-[0.25em] text-muted">
+                  {t("totalIncome")}
+                </span>
+              </div>
+              <p className="font-display text-4xl text-emerald-600">
+                + {formatCurrency(summary?.total_income ?? 0, language)}
+              </p>
+              <p className="text-sm text-muted">
+                {t("totalIncomeBody")} {t("thisMonth")}: {formatCurrency(summary?.monthly_income ?? 0, language)}
+              </p>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card/85">
+            <CardContent className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="rounded-full bg-rose-100 p-3">
+                  <ArrowDownRight className="h-5 w-5 text-rose-600" />
                 </span>
                 <span className="text-xs uppercase tracking-[0.25em] text-muted">
                   {t("totalSpent")}
                 </span>
               </div>
-              <p className="font-display text-4xl">
-                {formatCurrency(summary?.total_spent ?? 0, language)}
+              <p className="font-display text-4xl text-rose-600">
+                - {formatCurrency(summary?.total_expense ?? 0, language)}
               </p>
-              <p className="text-sm text-muted">{t("totalSpentBody")}</p>
+              <p className="text-sm text-muted">
+                {t("totalSpentBody")} {t("thisMonth")}: {formatCurrency(summary?.monthly_expense ?? 0, language)}
+              </p>
             </CardContent>
           </Card>
 
           <Card className="bg-card/85">
             <CardContent className="space-y-3">
               <div className="flex items-center justify-between">
-                <span className="rounded-full bg-secondary/60 p-3">
-                  <ArrowUpRight className="h-5 w-5 text-accent" />
+                <span className="rounded-full bg-sky-100 p-3">
+                  <Landmark className="h-5 w-5 text-sky-700" />
                 </span>
                 <span className="text-xs uppercase tracking-[0.25em] text-muted">
-                  {t("thisMonth")}
+                  {t("netBalance")}
                 </span>
               </div>
               <p className="font-display text-4xl">
-                {formatCurrency(summary?.monthly_spent ?? 0, language)}
+                {summary && summary.net_balance >= 0 ? "+ " : "- "}
+                {formatCurrency(Math.abs(summary?.net_balance ?? 0), language)}
               </p>
-              <p className="text-sm text-muted">{t("thisMonthBody")}</p>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-card/85">
-            <CardContent className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="rounded-full bg-secondary/60 p-3">
-                  <Target className="h-5 w-5 text-primary" />
-                </span>
-                <span className="text-xs uppercase tracking-[0.25em] text-muted">
-                  {t("activeGoals")}
-                </span>
-              </div>
-              <p className="font-display text-4xl">{summary?.goals.length ?? 0}</p>
-              <p className="text-sm text-muted">{t("activeGoalsBody")}</p>
+              <p className="text-sm text-muted">{t("netBalanceBody")}</p>
             </CardContent>
           </Card>
         </section>
 
-        <section className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+        <section className="grid gap-6 xl:grid-cols-[1fr_1fr]">
           <Card className="border-border/70 bg-card/80">
             <CardContent className="space-y-5">
               <div>
@@ -388,6 +448,24 @@ export default function DashboardPage() {
             </CardContent>
           </Card>
 
+          <Card className="border-border/70 bg-card/80">
+            <CardContent className="space-y-5">
+              <div className="flex items-center gap-3">
+                <span className="rounded-full bg-emerald-100 p-2 text-emerald-700">
+                  <ArrowUpRight className="h-5 w-5" />
+                </span>
+                <div>
+                  <p className="text-sm uppercase tracking-[0.3em] text-muted">{t("cashflowEntry")}</p>
+                  <h2 className="mt-1 text-xl font-semibold">{t("cashflowEntryTitle")}</h2>
+                </div>
+              </div>
+              <p className="text-sm leading-7 text-muted">{t("cashflowEntryBody")}</p>
+              <CashflowEntryForm onSubmit={handleCashflowSubmit} />
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
           <Card className="border-border/70 bg-card/80">
             <CardContent className="space-y-5">
               <div className="flex items-center gap-3">
@@ -411,6 +489,20 @@ export default function DashboardPage() {
                   {summary?.latest_insight.content ?? t("aiCollecting")}
                 </p>
               </div>
+            </CardContent>
+          </Card>
+
+          <Card className="bg-card/85">
+            <CardContent className="space-y-5">
+              <div>
+                <p className="text-sm uppercase tracking-[0.3em] text-muted">{t("newGoal")}</p>
+                <h2 className="mt-2 text-2xl font-display">{t("newGoalTitle")}</h2>
+              </div>
+              <GoalForm
+                goals={summary?.goals ?? []}
+                onCreate={handleGoalSubmit}
+                onContribute={handleGoalContribution}
+              />
             </CardContent>
           </Card>
         </section>
@@ -448,20 +540,6 @@ export default function DashboardPage() {
         </section>
 
         <section className="grid gap-6 xl:grid-cols-[0.92fr_1.08fr]">
-          <Card className="bg-card/85">
-            <CardContent className="space-y-5">
-              <div>
-                <p className="text-sm uppercase tracking-[0.3em] text-muted">{t("newGoal")}</p>
-                <h2 className="mt-2 text-2xl font-display">{t("newGoalTitle")}</h2>
-              </div>
-              <GoalForm
-                goals={summary?.goals ?? []}
-                onCreate={handleGoalSubmit}
-                onContribute={handleGoalContribution}
-              />
-            </CardContent>
-          </Card>
-
           <Card className="bg-card/85">
             <CardContent className="space-y-5">
               <div>
@@ -591,121 +669,147 @@ export default function DashboardPage() {
 
               <div className="space-y-3">
                 {summary?.recent_transactions.length ? (
-                  summary.recent_transactions.map((transaction) => (
-                    <div
-                      key={transaction.id}
-                      className="rounded-[22px] border border-border/70 bg-background/65 px-4 py-3"
-                    >
-                      {editingTransactionId === transaction.id ? (
-                        <div className="space-y-3">
-                          <div className="grid gap-3 sm:grid-cols-2">
+                  summary.recent_transactions.map((transaction) => {
+                    const accent = getTransactionAccent(transaction.transaction_type);
+
+                    return (
+                      <div
+                        key={transaction.id}
+                        className={`rounded-[22px] border px-4 py-3 ${accent.surface}`}
+                      >
+                        {editingTransactionId === transaction.id ? (
+                          <div className="space-y-3">
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <div className="space-y-1">
+                                <Label htmlFor={`title-${transaction.id}`}>{t("transactionTitle")}</Label>
+                                <Input
+                                  id={`title-${transaction.id}`}
+                                  value={transactionForm.title}
+                                  onChange={(event) =>
+                                    setTransactionForm((current) => ({ ...current, title: event.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label htmlFor={`type-${transaction.id}`}>{t("transactionType")}</Label>
+                                <select
+                                  id={`type-${transaction.id}`}
+                                  className="h-11 w-full rounded-[28px] border border-border bg-background px-4 text-sm outline-none focus:border-primary"
+                                  value={transactionForm.transaction_type}
+                                  onChange={(event) =>
+                                    setTransactionForm((current) => ({
+                                      ...current,
+                                      transaction_type: event.target.value as TransactionType,
+                                    }))
+                                  }
+                                >
+                                  <option value="expense">{t("expenseMode")}</option>
+                                  <option value="income">{t("incomeMode")}</option>
+                                </select>
+                              </div>
+                              <div className="space-y-1">
+                                <Label htmlFor={`category-${transaction.id}`}>{t("transactionCategory")}</Label>
+                                <Input
+                                  id={`category-${transaction.id}`}
+                                  value={transactionForm.category}
+                                  onChange={(event) =>
+                                    setTransactionForm((current) => ({ ...current, category: event.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <Label htmlFor={`amount-${transaction.id}`}>{t("transactionAmount")}</Label>
+                                <Input
+                                  id={`amount-${transaction.id}`}
+                                  type="number"
+                                  value={transactionForm.amount}
+                                  onChange={(event) =>
+                                    setTransactionForm((current) => ({ ...current, amount: event.target.value }))
+                                  }
+                                />
+                              </div>
+                              <div className="space-y-1 sm:col-span-2">
+                                <Label htmlFor={`date-${transaction.id}`}>{t("transactionDate")}</Label>
+                                <Input
+                                  id={`date-${transaction.id}`}
+                                  type="datetime-local"
+                                  value={transactionForm.transaction_date}
+                                  onChange={(event) =>
+                                    setTransactionForm((current) => ({
+                                      ...current,
+                                      transaction_date: event.target.value,
+                                    }))
+                                  }
+                                />
+                              </div>
+                            </div>
                             <div className="space-y-1">
-                              <Label htmlFor={`title-${transaction.id}`}>{t("transactionTitle")}</Label>
-                              <Input
-                                id={`title-${transaction.id}`}
-                                value={transactionForm.title}
+                              <Label htmlFor={`notes-${transaction.id}`}>{t("transactionNotes")}</Label>
+                              <Textarea
+                                id={`notes-${transaction.id}`}
+                                value={transactionForm.notes}
                                 onChange={(event) =>
-                                  setTransactionForm((current) => ({ ...current, title: event.target.value }))
+                                  setTransactionForm((current) => ({ ...current, notes: event.target.value }))
                                 }
                               />
                             </div>
-                            <div className="space-y-1">
-                              <Label htmlFor={`category-${transaction.id}`}>{t("transactionCategory")}</Label>
-                              <Input
-                                id={`category-${transaction.id}`}
-                                value={transactionForm.category}
-                                onChange={(event) =>
-                                  setTransactionForm((current) => ({ ...current, category: event.target.value }))
-                                }
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label htmlFor={`amount-${transaction.id}`}>{t("transactionAmount")}</Label>
-                              <Input
-                                id={`amount-${transaction.id}`}
-                                type="number"
-                                value={transactionForm.amount}
-                                onChange={(event) =>
-                                  setTransactionForm((current) => ({ ...current, amount: event.target.value }))
-                                }
-                              />
-                            </div>
-                            <div className="space-y-1">
-                              <Label htmlFor={`date-${transaction.id}`}>{t("transactionDate")}</Label>
-                              <Input
-                                id={`date-${transaction.id}`}
-                                type="datetime-local"
-                                value={transactionForm.transaction_date}
-                                onChange={(event) =>
-                                  setTransactionForm((current) => ({
-                                    ...current,
-                                    transaction_date: event.target.value,
-                                  }))
-                                }
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-1">
-                            <Label htmlFor={`notes-${transaction.id}`}>{t("transactionNotes")}</Label>
-                            <Textarea
-                              id={`notes-${transaction.id}`}
-                              value={transactionForm.notes}
-                              onChange={(event) =>
-                                setTransactionForm((current) => ({ ...current, notes: event.target.value }))
-                              }
-                            />
-                          </div>
-                          <div className="flex gap-2">
-                            <Button type="button" onClick={() => void handleTransactionSave(transaction.id)}>
-                              {t("save")}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              onClick={() => setEditingTransactionId(null)}
-                            >
-                              {t("cancel")}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-between gap-4">
-                          <div>
-                            <p className="font-medium text-foreground">{transaction.title}</p>
-                            <p className="mt-1 text-sm capitalize text-muted">{transaction.category}</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="font-semibold">
-                              {formatCurrency(transaction.amount, language)}
-                            </p>
-                            <p className="mt-1 text-sm text-muted">
-                              {new Date(transaction.transaction_date).toLocaleDateString(
-                                language === "uz" ? "uz-UZ" : language === "ru" ? "ru-RU" : "en-US"
-                              )}
-                            </p>
-                            <div className="mt-2 flex justify-end gap-2">
+                            <div className="flex gap-2">
+                              <Button type="button" onClick={() => void handleTransactionSave(transaction.id)}>
+                                {t("save")}
+                              </Button>
                               <Button
                                 type="button"
-                                size="default"
                                 variant="outline"
-                                onClick={() => beginEditing(transaction)}
+                                onClick={() => setEditingTransactionId(null)}
                               >
-                                {t("edit")}
-                              </Button>
-                              <Button
-                                type="button"
-                                size="default"
-                                variant="ghost"
-                                onClick={() => void handleTransactionDelete(transaction.id)}
-                              >
-                                {t("delete")}
+                                {t("cancel")}
                               </Button>
                             </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  ))
+                        ) : (
+                          <div className="flex items-center justify-between gap-4">
+                            <div>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="font-medium text-foreground">{transaction.title}</p>
+                                <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${accent.badge}`}>
+                                  {transaction.transaction_type === "income" ? t("incomeMode") : t("expenseMode")}
+                                </span>
+                              </div>
+                              <p className="mt-1 text-sm capitalize text-muted">{transaction.category}</p>
+                            </div>
+                            <div className="text-right">
+                              <p className={`font-semibold ${accent.amount}`}>
+                                {accent.sign} {formatCurrency(transaction.amount, language)}
+                              </p>
+                              <p className="mt-1 text-sm text-muted">
+                                {new Date(transaction.transaction_date).toLocaleDateString(
+                                  language === "uz" ? "uz-UZ" : language === "ru" ? "ru-RU" : "en-US"
+                                )}
+                              </p>
+                              <div className="mt-2 flex justify-end gap-2">
+                                <Button
+                                  type="button"
+                                  size="default"
+                                  variant="outline"
+                                  onClick={() => beginEditing(transaction)}
+                                >
+                                  {t("edit")}
+                                </Button>
+                                <Button
+                                  type="button"
+                                  size="default"
+                                  variant="ghost"
+                                  onClick={() => void handleTransactionDelete(transaction.id)}
+                                >
+                                  {t("delete")}
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
                 ) : (
                   <div className="rounded-[24px] border border-dashed border-border bg-white/60 p-6 text-sm text-muted">
                     {t("noTransactions")}

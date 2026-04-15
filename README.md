@@ -160,6 +160,7 @@ Example payload:
 - AI integrations gracefully fall back to a heuristic parser if API keys are not configured.
 - Railway, Render and DigitalOcean are good backend options; Vercel works well for the frontend.
 - For the easiest full-public deployment of this repo, see [DEPLOY_RAILWAY.md](/d:/Instagram%20vediolar%20senariysi/data_voice_/DEPLOY_RAILWAY.md).
+- To enable the admin panel and Excel export, set `ADMIN_EMAILS` to a comma-separated list of allowed admin emails.
 
 ## QA Checklist
 

@@ -11,10 +11,25 @@ from apps.backend.app.schemas.transaction import (
     TransactionUpdate,
 )
 from apps.backend.app.services.ai import parse_expense_with_ai
-from apps.backend.app.services.transactions import create_transactions, delete_transaction, update_transaction
+from apps.backend.app.services.transactions import (
+    create_transaction,
+    create_transactions,
+    delete_transaction,
+    update_transaction,
+)
 from database.schema.models import User
 
 router = APIRouter()
+
+
+@router.post("", response_model=TransactionRead, status_code=status.HTTP_201_CREATED)
+def create_transaction_endpoint(
+    payload: TransactionCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> TransactionRead:
+    transaction = create_transaction(db, current_user, payload)
+    return TransactionRead.model_validate(transaction)
 
 
 @router.post("/parse-expense", response_model=ExpenseParseResponse, status_code=status.HTTP_201_CREATED)

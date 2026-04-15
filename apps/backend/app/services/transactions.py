@@ -14,6 +14,7 @@ def create_transaction(db: Session, user: User, payload: TransactionCreate) -> T
         user_id=user.id,
         title=payload.title,
         category=payload.category,
+        transaction_type=payload.transaction_type,
         amount=payload.amount,
         transaction_date=payload.transaction_date or datetime.utcnow(),
         notes=payload.notes,
@@ -30,6 +31,7 @@ def create_transactions(db: Session, user: User, payloads: list[TransactionCreat
             user_id=user.id,
             title=payload.title,
             category=payload.category,
+            transaction_type=payload.transaction_type,
             amount=payload.amount,
             transaction_date=payload.transaction_date or datetime.utcnow(),
             notes=payload.notes,
@@ -68,6 +70,7 @@ def update_transaction(
     transaction = get_transaction_for_user(db, user.id, transaction_id)
     transaction.title = payload.title
     transaction.category = payload.category
+    transaction.transaction_type = payload.transaction_type
     transaction.amount = payload.amount
     transaction.transaction_date = payload.transaction_date or transaction.transaction_date
     transaction.notes = payload.notes

@@ -2,11 +2,13 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from apps.backend.app.core.config import get_settings
 from apps.backend.app.core.security import decode_token
 from apps.backend.app.db.session import get_db
 from database.schema.models import User
 
 security = HTTPBearer(auto_error=False)
+settings = get_settings()
 
 
 def get_current_user(
@@ -29,3 +31,9 @@ def get_current_user(
     if not user or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found or inactive")
     return user
+
+
+def get_admin_user(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.email.lower() not in settings.admin_emails:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required")
+    return current_user

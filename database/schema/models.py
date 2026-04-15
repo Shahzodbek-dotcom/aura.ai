@@ -23,6 +23,11 @@ class AdviceType(str, Enum):
     ALERT = "alert"
 
 
+class TransactionType(str, Enum):
+    EXPENSE = "expense"
+    INCOME = "income"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -48,6 +53,9 @@ class Transaction(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(160), nullable=False)
     category: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    transaction_type: Mapped[TransactionType] = mapped_column(
+        SqlEnum(TransactionType), default=TransactionType.EXPENSE, nullable=False, index=True
+    )
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     transaction_date: Mapped[datetime] = mapped_column(DateTime, nullable=False, index=True)
     notes: Mapped[str | None] = mapped_column(Text)
